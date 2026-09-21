@@ -77,41 +77,71 @@ function TransactionRow({ txn, onExpand, expanded, onStatusChange }) {
   );
 }
 
+function describeFetchError(e, fallback) {
+  // fetch() only throws TypeError for a network-level failure (backend down,
+  // wrong port, CORS). Anything else here is a response we did get, just
+  // with a non-2xx status — worth telling apart so the message is honest.
+  if (e instanceof TypeError) {
+    return "Can't reach the backend. Make sure it's running on localhost:8000.";
+  }
+  return `${fallback}: ${e.message}`;
+}
+
 function App() {
   const [transactions, setTransactions] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState(null);
+
+  const busy = refreshing || seeding;
 
   const fetchTransactions = async () => {
     try {
       const res = await fetch(`${API_BASE}/transactions`);
-      if (!res.ok) throw new Error("API error");
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       setTransactions(await res.json());
       setError(null);
     } catch (e) {
-      setError("Can't reach the backend. Make sure it's running on localhost:8000.");
+      setError(describeFetchError(e, "Couldn't load transactions"));
     }
   };
 
-  useEffect(() => { fetchTransactions(); }, []);
+  useEffect(() => {
+    fetchTransactions().finally(() => setInitialLoading(false));
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchTransactions();
+    setRefreshing(false);
+  };
 
   const seedDemoData = async () => {
-    setLoading(true);
+    setSeeding(true);
     try {
-      await fetch(`${API_BASE}/seed-demo-data`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/seed-demo-data`, { method: "POST" });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       await fetchTransactions();
-    } catch (e) { setError("Seed failed — is the backend running?"); }
-    setLoading(false);
+    } catch (e) {
+      setError(describeFetchError(e, "Seed failed"));
+    }
+    setSeeding(false);
   };
 
   const updateStatus = async (id, status) => {
-    await fetch(`${API_BASE}/transactions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    fetchTransactions();
+    try {
+      const res = await fetch(`${API_BASE}/transactions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+      await fetchTransactions();
+    } catch (e) {
+      setError(describeFetchError(e, "Couldn't update status"));
+    }
   };
 
   const highRisk = transactions.filter(t => t.risk_level === "high").length;
@@ -128,9 +158,11 @@ function App() {
           <p className="text-slate-500 text-sm mt-1">Digital lending transaction monitor — ML scoring + LLM explanation</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={fetchTransactions} className="px-4 py-2 text-sm rounded-lg bg-slate-800 hover:bg-slate-700 transition">Refresh</button>
-          <button onClick={seedDemoData} disabled={loading} className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50">
-            {loading ? "Loading…" : "Load Demo Transactions"}
+          <button onClick={handleRefresh} disabled={busy} className="px-4 py-2 text-sm rounded-lg bg-slate-800 hover:bg-slate-700 transition disabled:opacity-50">
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+          <button onClick={seedDemoData} disabled={busy} className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50">
+            {seeding ? "Loading…" : "Load Demo Transactions"}
           </button>
         </div>
       </div>
@@ -171,7 +203,13 @@ function App() {
             ))}
           </tbody>
         </table>
-        {transactions.length === 0 && !error && (
+        {initialLoading && (
+          <div className="py-16 flex items-center justify-center gap-2 text-slate-500 text-sm">
+            <span className="w-4 h-4 border-2 border-slate-600 border-t-slate-300 rounded-full animate-spin"></span>
+            Loading transactions…
+          </div>
+        )}
+        {!initialLoading && transactions.length === 0 && !error && (
           <div className="py-16 text-center text-slate-500 text-sm">
             No transactions yet. Click "Load Demo Transactions" to seed the dashboard.
           </div>
