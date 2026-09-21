@@ -29,7 +29,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 
 from auth import create_access_token, get_current_user, hash_password, verify_password
@@ -67,11 +67,26 @@ def _sanitize_for_json(obj):
     return obj
 
 
+def _redact_password_errors(errors: list) -> list:
+    """FastAPI echoes the rejected value back as "input" on a validation
+    error — fine for a bad loan_amount, not fine for a password. Strip it
+    for any error located at a "password" field before it reaches the
+    response body."""
+    redacted = []
+    for err in errors:
+        err = dict(err)
+        if "password" in err.get("loc", ()):
+            err["input"] = "[redacted]"
+        redacted.append(err)
+    return redacted
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = _redact_password_errors(exc.errors())
     return JSONResponse(
         status_code=422,
-        content={"detail": _sanitize_for_json(jsonable_encoder(exc.errors()))},
+        content={"detail": _sanitize_for_json(jsonable_encoder(errors))},
     )
 
 
@@ -107,14 +122,28 @@ class StatusUpdate(BaseModel):
     status: Literal["cleared", "flagged"]
 
 
+def _check_password_byte_length(password: str) -> str:
+    # bcrypt silently ignores anything past 72 bytes and raises ValueError
+    # instead of truncating, so an over-length password must be rejected
+    # here (clean 422) rather than crashing hash_password/verify_password
+    # (unhandled 500).
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes long")
+    return password
+
+
 class SignupIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
+
+    _validate_password_length = field_validator("password")(_check_password_byte_length)
 
 
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+
+    _validate_password_length = field_validator("password")(_check_password_byte_length)
 
 
 # Rejects a second identical submission within this window (e.g. a double-clicked

@@ -13,3 +13,5 @@ sentence-transformers
 bcrypt
 PyJWT
 email-validator
+pytest
+httpx

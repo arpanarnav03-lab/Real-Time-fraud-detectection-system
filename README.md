@@ -66,7 +66,23 @@ python3 -m http.server 3000
 
 Open `http://localhost:3000` in your browser.
 
-### 4. Try it
+### 4. Tests
+
+```bash
+cd backend
+source venv/bin/activate
+set -a && source .env && set +a   # tests run against the real app and Neon DB
+python3 -m pytest tests/ -v
+```
+
+Covers scoring (known high/low-risk inputs land in the right risk band),
+the auth flow (signup/login, protected routes reject a missing/invalid
+token), and the input-validation edge cases (out-of-range fields, duplicate
+rapid submissions, non-finite floats, over-length passwords). There's no
+separate test database — each test that needs a user signs up with a
+freshly generated email, so re-running the suite is safe.
+
+### 5. Try it
 
 Sign up for an account on the login screen (any email/password, 8+ characters)
 — all `/transactions` endpoints require a logged-in session. Once in, click
@@ -137,7 +153,10 @@ See training output for ROC-AUC and classification report.
   `JWT_SECRET` are read from environment variables only, via `.env`
   (gitignored). The app refuses to start without `JWT_SECRET` set.
 - Passwords are hashed with bcrypt before storage; plaintext passwords are
-  never persisted.
+  never persisted, logged, or echoed back in a validation-error response
+  (FastAPI's default behavior echoes the rejected value — redacted here for
+  any field named `password`). Passwords over bcrypt's 72-byte limit are
+  rejected with a 422 rather than crashing the hash/verify call.
 - All `/transactions*` and `/seed-demo-data` endpoints require a valid JWT
   (`Authorization: Bearer <token>`), issued by `/auth/login` or `/auth/signup`
   and valid for 24 hours.
