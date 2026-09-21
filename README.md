@@ -37,9 +37,12 @@ python3 -m venv venv && source venv/bin/activate   # optional but recommended
 pip install -r requirements.txt
 
 cp ../.env.example .env
-# edit .env: set DATABASE_URL (required, see step 1 above), and optionally
-# ANTHROPIC_API_KEY to enable LLM explanations — without it, the system
-# falls back to rule-based explanations automatically
+# edit .env:
+# - DATABASE_URL (required, see step 1 above)
+# - JWT_SECRET (required — signs auth tokens). Generate one with:
+#     python3 -c "import secrets; print(secrets.token_hex(32))"
+# - ANTHROPIC_API_KEY (optional) to enable LLM explanations — without it,
+#   the system falls back to rule-based explanations automatically
 
 # train the model (already included as fraud_model.joblib, but you can retrain)
 python3 ../data/generate_data.py   # regenerate synthetic dataset if needed
@@ -65,9 +68,11 @@ Open `http://localhost:3000` in your browser.
 
 ### 4. Try it
 
-Click **"Load Demo Transactions"** on the dashboard to seed 25 scored
-transactions from the synthetic dataset. Click any row to see the fraud
-explanation and clear/flag it.
+Sign up for an account on the login screen (any email/password, 8+ characters)
+— all `/transactions` endpoints require a logged-in session. Once in, click
+**"Load Demo Transactions"** on the dashboard to seed 25 scored transactions
+from the synthetic dataset. Click any row to see the fraud explanation and
+clear/flag it.
 
 ## How it works
 
@@ -87,8 +92,10 @@ explanation and clear/flag it.
 fraud-detection-hackathon/
 ├── backend/
 │   ├── main.py           # FastAPI app — endpoints, scoring
+│   ├── auth.py           # password hashing (bcrypt) + JWT issue/verify
 │   ├── database.py       # SQLAlchemy engine/session (Postgres via Neon)
-│   ├── models.py         # ORM models: transactions, fraud_case_embeddings
+│   ├── models.py         # ORM models: users, transactions, fraud_case_embeddings
+│   ├── embeddings.py     # sentence-transformers embedding for similarity search
 │   ├── train_model.py    # trains the XGBoost fraud model
 │   ├── llm_explain.py    # LLM explanation + rule-based fallback
 │   ├── fraud_model.joblib
@@ -105,13 +112,18 @@ fraud-detection-hackathon/
 
 ## API reference
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/transactions` | Score and store a new transaction |
-| GET | `/transactions` | List all scored transactions |
-| PATCH | `/transactions/{id}` | Update status (`cleared` / `flagged`) |
-| POST | `/seed-demo-data` | Seed 25 sample transactions for the demo |
-| GET | `/health` | Health check |
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/auth/signup` | — | Create an account (email + password, 8+ chars), returns a JWT |
+| POST | `/auth/login` | — | Log in, returns a JWT |
+| POST | `/transactions` | Bearer token | Score and store a new transaction |
+| GET | `/transactions` | Bearer token | List all scored transactions |
+| PATCH | `/transactions/{id}` | Bearer token | Update status (`cleared` / `flagged`) |
+| POST | `/seed-demo-data` | Bearer token | Seed 25 sample transactions for the demo |
+| GET | `/health` | — | Health check |
+
+`/transactions*` and `/seed-demo-data` require an `Authorization: Bearer <token>`
+header, obtained from `/auth/login` or `/auth/signup`.
 
 ## Model performance
 
@@ -121,8 +133,14 @@ See training output for ROC-AUC and classification report.
 
 ## Security notes
 
-- No secrets are hardcoded — `ANTHROPIC_API_KEY` and `DATABASE_URL` are read
-  from environment variables only, via `.env` (gitignored).
+- No secrets are hardcoded — `ANTHROPIC_API_KEY`, `DATABASE_URL`, and
+  `JWT_SECRET` are read from environment variables only, via `.env`
+  (gitignored). The app refuses to start without `JWT_SECRET` set.
+- Passwords are hashed with bcrypt before storage; plaintext passwords are
+  never persisted.
+- All `/transactions*` and `/seed-demo-data` endpoints require a valid JWT
+  (`Authorization: Bearer <token>`), issued by `/auth/login` or `/auth/signup`
+  and valid for 24 hours.
 - Input validation via Pydantic models on all API endpoints.
 - The Postgres connection uses `sslmode=require` and `channel_binding=require`
   as provided by Neon; don't strip these from `DATABASE_URL`.

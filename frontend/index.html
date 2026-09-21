@@ -251,7 +251,93 @@ function describeFetchError(e, fallback) {
   return `${fallback}: ${e.message}`;
 }
 
-function App() {
+// Extracts a readable message from a FastAPI error body: a plain string
+// (HTTPException) or a list of Pydantic validation errors.
+function describeErrorBody(body, status) {
+  if (!body || !body.detail) return `Server responded with ${status}`;
+  return Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join("; ") : body.detail;
+}
+
+function AuthScreen({ onAuthenticated }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/auth/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(describeErrorBody(body, res.status));
+      onAuthenticated(body.access_token);
+    } catch (e) {
+      setError(describeFetchError(e, mode === "login" ? "Login failed" : "Sign up failed"));
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-6">
+      <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <h1 className="text-xl font-bold mb-1">Real-Time Fraud Detection</h1>
+        <p className="text-slate-500 text-sm mb-6">{mode === "login" ? "Log in to continue" : "Create an account"}</p>
+
+        {error && (
+          <div className="mb-4 px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm">{error}</div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <label className="block">
+            <span className="block text-xs text-slate-500 mb-1">Email</span>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs text-slate-500 mb-1">Password{mode === "signup" ? " (min 8 characters)" : ""}</span>
+            <input
+              type="password"
+              required
+              minLength={mode === "signup" ? 8 : undefined}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50"
+          >
+            {submitting ? "…" : mode === "login" ? "Log in" : "Sign up"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); }}
+          className="mt-4 text-xs text-slate-500 hover:text-slate-300 transition"
+        >
+          {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ token, onLogout }) {
   const [transactions, setTransactions] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -263,9 +349,24 @@ function App() {
 
   const busy = refreshing || seeding;
 
+  // Attaches the bearer token to every API call, and signs the user out if
+  // it's been rejected (missing/expired/invalid) rather than surfacing a
+  // raw 401 as a generic error.
+  const apiFetch = async (path, options = {}) => {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) {
+      onLogout();
+    }
+    return res;
+  };
+
   const fetchTransactions = async () => {
     try {
-      const res = await fetch(`${API_BASE}/transactions`);
+      const res = await apiFetch("/transactions");
+      if (res.status === 401) return;
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       setTransactions(await res.json());
       setError(null);
@@ -287,7 +388,8 @@ function App() {
   const seedDemoData = async () => {
     setSeeding(true);
     try {
-      const res = await fetch(`${API_BASE}/seed-demo-data`, { method: "POST" });
+      const res = await apiFetch("/seed-demo-data", { method: "POST" });
+      if (res.status === 401) { setSeeding(false); return; }
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       await fetchTransactions();
     } catch (e) {
@@ -299,21 +401,16 @@ function App() {
   const createTransaction = async (payload) => {
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/transactions`, {
+      const res = await apiFetch("/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        const detail = body && body.detail
-          ? (Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join("; ") : body.detail)
-          : `Server responded with ${res.status}`;
-        throw new Error(detail);
-      }
-      const created = await res.json();
+      if (res.status === 401) { setSubmitting(false); return false; }
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(describeErrorBody(body, res.status));
       await fetchTransactions();
-      setHighlightId(created.id);
+      setHighlightId(body.id);
       setTimeout(() => setHighlightId(null), 2500);
       setSubmitting(false);
       return true;
@@ -326,11 +423,12 @@ function App() {
 
   const updateStatus = async (id, status) => {
     try {
-      const res = await fetch(`${API_BASE}/transactions/${id}`, {
+      const res = await apiFetch(`/transactions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      if (res.status === 401) return;
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       await fetchTransactions();
     } catch (e) {
@@ -367,6 +465,9 @@ function App() {
           </button>
           <button onClick={seedDemoData} disabled={busy} className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50">
             {seeding ? "Loading…" : "Load Demo Transactions"}
+          </button>
+          <button onClick={onLogout} className="px-4 py-2 text-sm rounded-lg bg-slate-800 hover:bg-slate-700 transition">
+            Log out
           </button>
         </div>
       </div>
@@ -431,7 +532,27 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+function Root() {
+  const [token, setToken] = useState(() => {
+    try { return localStorage.getItem("token"); } catch (e) { return null; }
+  });
+
+  const handleAuthenticated = (newToken) => {
+    try { localStorage.setItem("token", newToken); } catch (e) {}
+    setToken(newToken);
+  };
+
+  const handleLogout = () => {
+    try { localStorage.removeItem("token"); } catch (e) {}
+    setToken(null);
+  };
+
+  return token
+    ? <Dashboard token={token} onLogout={handleLogout} />
+    : <AuthScreen onAuthenticated={handleAuthenticated} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
 </script>
 </body>
 </html>

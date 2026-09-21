@@ -36,3 +36,12 @@ class FraudCaseEmbedding(Base):
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=False)
     embedding = Column(Vector(384))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(String)

@@ -24,14 +24,15 @@ import xgboost  # noqa: F401
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 
+from auth import create_access_token, get_current_user, hash_password, verify_password
 from database import Base, SessionLocal, engine
 from embeddings import embed_transaction
 from llm_explain import explain_transaction
@@ -104,6 +105,16 @@ class TransactionIn(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: Literal["cleared", "flagged"]
+
+
+class SignupIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
 
 
 # Rejects a second identical submission within this window (e.g. a double-clicked
@@ -197,15 +208,44 @@ def _score_and_store(row: dict) -> dict:
     return {"id": txn_id, "fraud_probability": prob, "risk_level": risk, "similar_cases": similar_cases, **result}
 
 
+@app.post("/auth/signup")
+def signup(payload: SignupIn):
+    db = get_db()
+    existing = db.query(models.User).filter(models.User.email == payload.email).first()
+    if existing:
+        db.close()
+        raise HTTPException(409, "Email already registered")
+    user = models.User(
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        created_at=datetime.utcnow().isoformat(),
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    db.close()
+    return {"access_token": create_access_token(user_id, payload.email), "token_type": "bearer"}
+
+
+@app.post("/auth/login")
+def login(payload: LoginIn):
+    db = get_db()
+    user = db.query(models.User).filter(models.User.email == payload.email).first()
+    db.close()
+    if user is None or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(401, "Invalid email or password")
+    return {"access_token": create_access_token(user.id, user.email), "token_type": "bearer"}
+
+
 @app.post("/transactions")
-def create_transaction(txn: TransactionIn):
+def create_transaction(txn: TransactionIn, current_user: dict = Depends(get_current_user)):
     row = txn.dict()
     _reject_if_duplicate(row)
     return _score_and_store(row)
 
 
 @app.get("/transactions")
-def list_transactions():
+def list_transactions(current_user: dict = Depends(get_current_user)):
     db = get_db()
     rows = (
         db.query(models.Transaction)
@@ -219,7 +259,7 @@ def list_transactions():
 
 
 @app.patch("/transactions/{txn_id}")
-def update_status(txn_id: int, update: StatusUpdate):
+def update_status(txn_id: int, update: StatusUpdate, current_user: dict = Depends(get_current_user)):
     db = get_db()
     row = db.get(models.Transaction, txn_id)
     if row is None:
@@ -232,7 +272,7 @@ def update_status(txn_id: int, update: StatusUpdate):
 
 
 @app.post("/seed-demo-data")
-def seed_demo_data():
+def seed_demo_data(current_user: dict = Depends(get_current_user)):
     """Convenience endpoint: scores a batch of sample transactions from the
     held-out dataset so the dashboard has data to show immediately."""
     df = pd.read_csv(BASE_DIR.parent / "data" / "transactions.csv").sample(25, random_state=7)

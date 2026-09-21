@@ -10,3 +10,6 @@ sqlalchemy
 psycopg[binary]
 pgvector
 sentence-transformers
+bcrypt
+PyJWT
+email-validator
