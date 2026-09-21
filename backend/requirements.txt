@@ -4,7 +4,7 @@ xgboost
 scikit-learn
 pandas
 joblib
-anthropic
+openai
 python-dotenv
 sqlalchemy
 psycopg[binary]

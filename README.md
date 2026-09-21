@@ -41,7 +41,7 @@ cp ../.env.example .env
 # - DATABASE_URL (required, see step 1 above)
 # - JWT_SECRET (required — signs auth tokens). Generate one with:
 #     python3 -c "import secrets; print(secrets.token_hex(32))"
-# - ANTHROPIC_API_KEY (optional) to enable LLM explanations — without it,
+# - GROQ_API_KEY (optional) to enable LLM explanations — without it,
 #   the system falls back to rule-based explanations automatically
 
 # train the model (already included as fraud_model.joblib, but you can retrain)
@@ -99,10 +99,10 @@ clear/flag it.
    submitted to `POST /transactions`.
 2. The XGBoost model returns a fraud probability and risk level (low/medium/high).
 3. The top contributing features are extracted from the model's feature importances.
-4. An LLM call (Claude) turns the score + features into a plain-English
-   explanation and recommended action. If the API key isn't set or the call
-   fails, a rule-based fallback generates the explanation instead — scoring
-   never breaks due to an LLM outage.
+4. An LLM call (Groq, Llama 3.3 70B) turns the score + features into a
+   plain-English explanation and recommended action. If the API key isn't
+   set or the call fails, a rule-based fallback generates the explanation
+   instead — scoring never breaks due to an LLM outage.
 5. The result is stored and shown on the dashboard for human review.
 
 ## Project structure
@@ -180,7 +180,7 @@ real values in `.env.example` or any committed file.
 |---|---|---|
 | `DATABASE_URL` | Yes | Neon Postgres pooled connection string (`sslmode=require&channel_binding=require`) |
 | `JWT_SECRET` | Yes | Signs/verifies auth tokens. Generate with `python3 -c "import secrets; print(secrets.token_hex(32))"` |
-| `ANTHROPIC_API_KEY` | No | Enables LLM explanations; without it, the rule-based fallback is used |
+| `GROQ_API_KEY` | No | Enables LLM explanations (Groq, Llama 3.3 70B); without it, the rule-based fallback is used |
 
 ### Backend → Render
 
@@ -229,7 +229,7 @@ The frontend is a Vite project with a build step (`npm run build` →
 
 ## Security notes
 
-- No secrets are hardcoded — `ANTHROPIC_API_KEY`, `DATABASE_URL`, and
+- No secrets are hardcoded — `GROQ_API_KEY`, `DATABASE_URL`, and
   `JWT_SECRET` are read from environment variables only, via `.env`
   (gitignored). The app refuses to start without `JWT_SECRET` set.
 - Passwords are hashed with bcrypt before storage; plaintext passwords are

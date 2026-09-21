@@ -1,21 +1,22 @@
 """
 Generates a human-readable fraud explanation + recommended action from the
-ML score and top contributing features. Calls the Anthropic API if
-ANTHROPIC_API_KEY is set; otherwise falls back to a deterministic
-rule-based explanation so the system degrades gracefully instead of
-failing (mirrors the confidence-fallback pattern used in the interlinking
-engine this prototype builds on).
+ML score and top contributing features. Calls the Groq API (OpenAI-compatible)
+if GROQ_API_KEY is set; otherwise falls back to a deterministic rule-based
+explanation so the system degrades gracefully instead of failing (mirrors
+the confidence-fallback pattern used in the interlinking engine this
+prototype builds on).
 """
 import os
 import json
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 _client = None
-if ANTHROPIC_API_KEY:
+if GROQ_API_KEY:
     try:
-        import anthropic
-        _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        from openai import OpenAI
+        _client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
     except Exception:
         _client = None
 
@@ -80,15 +81,15 @@ Respond ONLY with JSON, no preamble, no markdown fences:
 {{"explanation": "<2-3 sentence plain-English explanation a fraud analyst can act on>", "recommended_action": "<one of: approve, flag_for_review, block>"}}"""
 
     try:
-        response = _client.messages.create(
-            model="claude-sonnet-4-6",
+        response = _client.chat.completions.create(
+            model=GROQ_MODEL,
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}],
         )
-        text = response.content[0].text.strip()
+        text = response.choices[0].message.content.strip()
         text = text.replace("```json", "").replace("```", "").strip()
         parsed = json.loads(text)
-        parsed["source"] = "llm"
+        parsed["source"] = "groq"
         return parsed
     except Exception:
         # Graceful degradation: never let an LLM/API failure break scoring

@@ -33,7 +33,7 @@
   <text x="234" y="292" font-size="12" fill="#334155">• sentence-transformers embeddings (384-dim)</text>
   <text x="234" y="312" font-size="12" fill="#334155">• Pydantic input validation on every endpoint</text>
 
-  <!-- Arrows: FastAPI -> Postgres, FastAPI -> Claude -->
+  <!-- Arrows: FastAPI -> Postgres, FastAPI -> Groq -->
   <line x1="300" y1="330" x2="210" y2="404" stroke="#94a3b8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)" />
   <line x1="520" y1="330" x2="610" y2="404" stroke="#94a3b8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)" />
   <text x="130" y="368" font-size="11" fill="#475569">SQLAlchemy ORM</text>
@@ -49,11 +49,11 @@
   <text x="64" y="494" font-size="12" fill="#334155">• fraud_case_embeddings (vector(384))</text>
   <text x="64" y="514" font-size="12" fill="#334155">• cosine similarity search for fraud patterns</text>
 
-  <!-- Claude API -->
+  <!-- Groq API -->
   <rect x="440" y="404" width="340" height="126" rx="10" fill="#f8fafc" stroke="#7c3aed" stroke-width="2" />
-  <text x="610" y="430" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">Claude API</text>
-  <rect x="565" y="438" width="90" height="16" rx="8" fill="#7c3aed" />
-  <text x="610" y="450" text-anchor="middle" font-size="10" font-weight="600" fill="#ffffff">Anthropic</text>
+  <text x="610" y="430" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">Groq API</text>
+  <rect x="555" y="438" width="110" height="16" rx="8" fill="#7c3aed" />
+  <text x="610" y="450" text-anchor="middle" font-size="10" font-weight="600" fill="#ffffff">Llama 3.3 70B</text>
   <text x="464" y="474" font-size="12" fill="#334155">• plain-English fraud explanation</text>
   <text x="464" y="494" font-size="12" fill="#334155">• informed by similar-case history</text>
   <text x="464" y="514" font-size="12" fill="#334155">• rule-based fallback if unset/unavailable</text>

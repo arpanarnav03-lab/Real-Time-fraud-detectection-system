@@ -2,14 +2,14 @@
 
 ## What's built today
 
-![Architecture diagram: React dashboard on Vercel calls FastAPI on Render over HTTPS with a JWT bearer token; FastAPI does XGBoost scoring and sentence-transformers embeddings in-process, then reads/writes PostgreSQL+pgvector on Neon and calls the Claude API for explanations with a rule-based fallback.](architecture.svg)
+![Architecture diagram: React dashboard on Vercel calls FastAPI on Render over HTTPS with a JWT bearer token; FastAPI does XGBoost scoring and sentence-transformers embeddings in-process, then reads/writes PostgreSQL+pgvector on Neon and calls the Groq API (Llama 3.3 70B) for explanations with a rule-based fallback.](architecture.svg)
 
 - **Frontend**: React + Vite (Tailwind still via CDN `<script>` tag, no Tailwind build step) — see `frontend/`
 - **Backend**: one FastAPI service (API + AI layer consolidated for build speed) — see `backend/`
 - **Auth**: email/password signup and login, bcrypt-hashed passwords, JWT bearer tokens (24h expiry). All `/transactions*` and `/seed-demo-data` endpoints require a valid token.
 - **ML model**: XGBoost, class-weighted for imbalance (fraud ~3% of transactions), ROC-AUC-optimized
 - **Semantic similarity**: each transaction is embedded (`sentence-transformers`, 384-dim) and stored in `fraud_case_embeddings`; scoring a new transaction retrieves its top-3 nearest historical cases via pgvector cosine distance, and that context is passed into the explanation prompt
-- **Explanation layer**: Claude API call for human-readable fraud reasoning, informed by the similar-case history above; falls back to a deterministic rule-based explanation if the API key is unset or the call fails — the system never breaks scoring due to an LLM outage
+- **Explanation layer**: Groq API call (Llama 3.3 70B, OpenAI-compatible client) for human-readable fraud reasoning, informed by the similar-case history above; falls back to a deterministic rule-based explanation if the API key is unset or the call fails — the system never breaks scoring due to an LLM outage
 - **Storage**: PostgreSQL via SQLAlchemy, hosted on Neon, with the `pgvector` extension enabled and in active use for similarity search
 - **Deployment**: config is ready (`render.yaml` for the backend, `frontend/vercel.json` for the frontend) but nothing is deployed yet — see the README's Deployment section
 
@@ -34,7 +34,7 @@ Key differences from today's build, and why they're deferred:
 | Component | Prototype | Production target | Why deferred |
 |---|---|---|---|
 | Deployment | Config ready, not live | Render (API) + Vercel (frontend) + managed Postgres | No live URL needed until demo day; config is committed and reviewed |
-| AI layer | Direct Claude API call | AWS Bedrock, prompt templates, guardrails | Same underlying pattern, swap the client for a managed service |
+| AI layer | Direct Groq API call | AWS Bedrock, prompt templates, guardrails | Same underlying pattern, swap the client for a managed service |
 | Auth | Email/password + JWT | JWT sessions, domain-restricted signup | Domain restriction and session refresh are out of scope for a scoring demo |
 | Services | Consolidated (1 service) | Split API / AI / DB layers | Faster to build and debug as one service under time pressure |
 

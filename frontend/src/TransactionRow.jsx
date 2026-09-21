@@ -31,7 +31,7 @@ function TransactionRow({ txn, onExpand, expanded, onStatusChange, highlight }) 
             <div className={`rounded-lg border p-5 ${risk.bg}`}>
               <div className="text-sm text-slate-200 mb-3 leading-relaxed">{txn.explanation}</div>
               <div className="text-xs text-slate-500 mb-3">
-                Explanation source: {txn.source === "llm" ? "Claude (LLM)" : "rule-based fallback"}
+                Explanation source: {txn.source === "groq" ? "Groq (LLM)" : "rule-based fallback"}
               </div>
               {txn.similar_cases && txn.similar_cases.length > 0 && (
                 <div className="mb-3">
