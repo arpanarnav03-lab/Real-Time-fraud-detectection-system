@@ -31,11 +31,16 @@ function StatCard({ label, value, accent }) {
   );
 }
 
-function TransactionRow({ txn, onExpand, expanded, onStatusChange }) {
+function TransactionRow({ txn, onExpand, expanded, onStatusChange, highlight }) {
   const risk = RISK_STYLES[txn.risk_level] || RISK_STYLES.low;
   return (
     <>
-      <tr onClick={() => onExpand(txn.id)} className="border-b border-slate-800 cursor-pointer hover:bg-slate-900/60 transition">
+      <tr
+        onClick={() => onExpand(txn.id)}
+        className={`border-b border-slate-800 cursor-pointer transition ${
+          highlight ? "bg-indigo-500/15 ring-1 ring-inset ring-indigo-400 animate-pulse" : "hover:bg-slate-900/60"
+        }`}
+      >
         <td className="py-3 px-4 text-slate-400 text-sm">#{txn.id}</td>
         <td className="py-3 px-4">
           <span className={`inline-flex items-center gap-2 text-sm font-medium ${risk.text}`}>
@@ -90,6 +95,152 @@ function TransactionRow({ txn, onExpand, expanded, onStatusChange }) {
   );
 }
 
+function NumberField({ label, suffix, value, onChange, min, max, step = "any" }) {
+  return (
+    <label className="block">
+      <span className="block text-xs text-slate-500 mb-1">{label}{suffix ? ` (${suffix})` : ""}</span>
+      <input
+        type="number"
+        required
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
+      />
+    </label>
+  );
+}
+
+function ToggleField({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-3 bg-slate-800 border border-slate-700 rounded-md px-3 py-2 cursor-pointer select-none">
+      <span className="text-sm text-slate-300">{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only" />
+      <span className={`w-9 h-5 rounded-full transition relative shrink-0 ${checked ? "bg-indigo-600" : "bg-slate-600"}`}>
+        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? "translate-x-4" : ""}`}></span>
+      </span>
+    </label>
+  );
+}
+
+// Realistic pre-fills so a demo doesn't require typing all 9 fields by hand.
+const PRESETS = {
+  suspicious: {
+    loan_amount: "75000",
+    distance_from_home: "250",
+    distance_from_last_transaction: "180",
+    ratio_to_median_purchase: "6.5",
+    hour_of_day: "3",
+    repeat_borrower: false,
+    used_chip_or_biometric: false,
+    used_pin_or_otp: false,
+    is_online_channel: true,
+  },
+  normal: {
+    loan_amount: "5000",
+    distance_from_home: "8",
+    distance_from_last_transaction: "3",
+    ratio_to_median_purchase: "1.0",
+    hour_of_day: "14",
+    repeat_borrower: true,
+    used_chip_or_biometric: true,
+    used_pin_or_otp: true,
+    is_online_channel: false,
+  },
+};
+
+const EMPTY_FORM = {
+  loan_amount: "",
+  distance_from_home: "",
+  distance_from_last_transaction: "",
+  ratio_to_median_purchase: "",
+  hour_of_day: "",
+  repeat_borrower: false,
+  used_chip_or_biometric: false,
+  used_pin_or_otp: false,
+  is_online_channel: false,
+};
+
+function NewTransactionPanel({ onSubmit, submitting }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+
+  const setField = (name) => (value) => setForm((f) => ({ ...f, [name]: value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const ok = await onSubmit({
+      loan_amount: Number(form.loan_amount),
+      distance_from_home: Number(form.distance_from_home),
+      distance_from_last_transaction: Number(form.distance_from_last_transaction),
+      ratio_to_median_purchase: Number(form.ratio_to_median_purchase),
+      hour_of_day: Number(form.hour_of_day),
+      repeat_borrower: form.repeat_borrower ? 1 : 0,
+      used_chip_or_biometric: form.used_chip_or_biometric ? 1 : 0,
+      used_pin_or_otp: form.used_pin_or_otp ? 1 : 0,
+      is_online_channel: form.is_online_channel ? 1 : 0,
+    });
+    if (ok) {
+      setForm(EMPTY_FORM);
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl mb-6 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 text-sm font-medium hover:bg-slate-800/50 transition"
+      >
+        <span>+ New Transaction</span>
+        <span className="text-slate-500 text-xs">{open ? "Hide ▲" : "Show ▼"}</span>
+      </button>
+      {open && (
+        <form onSubmit={handleSubmit} className="px-5 pb-5 pt-1 border-t border-slate-800">
+          <div className="flex gap-2 mb-4 mt-4">
+            <button
+              type="button"
+              onClick={() => setForm(PRESETS.suspicious)}
+              className="px-3 py-1.5 text-xs rounded-md bg-rose-600/20 text-rose-300 border border-rose-600/40 hover:bg-rose-600/30 transition"
+            >Try a suspicious pattern</button>
+            <button
+              type="button"
+              onClick={() => setForm(PRESETS.normal)}
+              className="px-3 py-1.5 text-xs rounded-md bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 transition"
+            >Try a normal pattern</button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+            <NumberField label="Loan amount" suffix="₹" value={form.loan_amount} onChange={setField("loan_amount")} min="1" />
+            <NumberField label="Distance from home" suffix="km" value={form.distance_from_home} onChange={setField("distance_from_home")} min="0" />
+            <NumberField label="Distance from last txn" suffix="km" value={form.distance_from_last_transaction} onChange={setField("distance_from_last_transaction")} min="0" />
+            <NumberField label="Ratio to median purchase" value={form.ratio_to_median_purchase} onChange={setField("ratio_to_median_purchase")} min="0" />
+            <NumberField label="Hour of day" suffix="0-23" value={form.hour_of_day} onChange={setField("hour_of_day")} min="0" max="23" />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <ToggleField label="Repeat borrower" checked={form.repeat_borrower} onChange={setField("repeat_borrower")} />
+            <ToggleField label="Chip / biometric" checked={form.used_chip_or_biometric} onChange={setField("used_chip_or_biometric")} />
+            <ToggleField label="PIN / OTP" checked={form.used_pin_or_otp} onChange={setField("used_pin_or_otp")} />
+            <ToggleField label="Online channel" checked={form.is_online_channel} onChange={setField("is_online_channel")} />
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50"
+          >
+            {submitting ? "Scoring…" : "Score transaction"}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function describeFetchError(e, fallback) {
   // fetch() only throws TypeError for a network-level failure (backend down,
   // wrong port, CORS). Anything else here is a response we did get, just
@@ -106,6 +257,8 @@ function App() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [highlightId, setHighlightId] = useState(null);
   const [error, setError] = useState(null);
 
   const busy = refreshing || seeding;
@@ -143,6 +296,34 @@ function App() {
     setSeeding(false);
   };
 
+  const createTransaction = async (payload) => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/transactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const detail = body && body.detail
+          ? (Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join("; ") : body.detail)
+          : `Server responded with ${res.status}`;
+        throw new Error(detail);
+      }
+      const created = await res.json();
+      await fetchTransactions();
+      setHighlightId(created.id);
+      setTimeout(() => setHighlightId(null), 2500);
+      setSubmitting(false);
+      return true;
+    } catch (e) {
+      setError(describeFetchError(e, "Couldn't create transaction"));
+      setSubmitting(false);
+      return false;
+    }
+  };
+
   const updateStatus = async (id, status) => {
     try {
       const res = await fetch(`${API_BASE}/transactions/${id}`, {
@@ -156,6 +337,16 @@ function App() {
       setError(describeFetchError(e, "Couldn't update status"));
     }
   };
+
+  // While a just-created transaction is highlighted, pin it to the top
+  // regardless of its natural risk-sort rank; once the highlight clears it
+  // settles back into normal order on the next render.
+  const orderedTransactions = highlightId
+    ? [
+        ...transactions.filter((t) => t.id === highlightId),
+        ...transactions.filter((t) => t.id !== highlightId),
+      ]
+    : transactions;
 
   const highRisk = transactions.filter(t => t.risk_level === "high").length;
   const pending = transactions.filter(t => t.status === "pending").length;
@@ -191,6 +382,8 @@ function App() {
         <StatCard label="Avg Fraud Score" value={`${avgProb}%`} />
       </div>
 
+      <NewTransactionPanel onSubmit={createTransaction} submitting={submitting} />
+
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <table className="w-full text-left">
           <thead>
@@ -205,11 +398,12 @@ function App() {
             </tr>
           </thead>
           <tbody>
-            {transactions.map(txn => (
+            {orderedTransactions.map(txn => (
               <TransactionRow
                 key={txn.id}
                 txn={txn}
                 expanded={expandedId === txn.id}
+                highlight={txn.id === highlightId}
                 onExpand={(id) => setExpandedId(expandedId === id ? null : id)}
                 onStatusChange={updateStatus}
               />
