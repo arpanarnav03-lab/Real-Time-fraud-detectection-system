@@ -17,6 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+# xgboost's native lib must finish initializing its OpenMP runtime before
+# torch (pulled in indirectly by sentence-transformers below) initializes
+# its own — loading torch first causes a segfault from the two colliding.
+import xgboost  # noqa: F401
+
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
@@ -28,6 +33,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from database import Base, SessionLocal, engine
+from embeddings import embed_transaction
 from llm_explain import explain_transaction
 import models
 
@@ -76,6 +82,10 @@ def init_db():
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(engine)
+    # create_all only adds missing tables, not missing columns on tables that
+    # already existed from before this column was added.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS similar_cases JSON"))
 
 init_db()
 
@@ -126,15 +136,37 @@ def top_contributing_features(row: dict, n=3):
     return [{"name": name, "value": float(row[name])} for name, _ in ranked]
 
 
+def _find_similar_cases(db, embedding: list, k: int = 3) -> list:
+    rows = (
+        db.query(models.Transaction)
+        .join(models.FraudCaseEmbedding, models.FraudCaseEmbedding.transaction_id == models.Transaction.id)
+        .order_by(models.FraudCaseEmbedding.embedding.cosine_distance(embedding))
+        .limit(k)
+        .all()
+    )
+    return [
+        {
+            "transaction_id": t.id,
+            "risk_level": t.risk_level,
+            "fraud_probability": t.fraud_probability,
+            "loan_amount": t.loan_amount,
+        }
+        for t in rows
+    ]
+
+
 def _score_and_store(row: dict) -> dict:
     X = pd.DataFrame([row])[FEATURES]
     prob = float(model.predict_proba(X)[0, 1])
     risk = risk_level_from_prob(prob)
     top_features = top_contributing_features(row)
-
-    result = explain_transaction(prob, risk, top_features)
+    embedding = embed_transaction(row)
 
     db = get_db()
+    similar_cases = _find_similar_cases(db, embedding)
+
+    result = explain_transaction(prob, risk, top_features, similar_cases)
+
     txn_row = models.Transaction(
         distance_from_home=row["distance_from_home"],
         distance_from_last_transaction=row["distance_from_last_transaction"],
@@ -150,15 +182,19 @@ def _score_and_store(row: dict) -> dict:
         explanation=result["explanation"],
         recommended_action=result["recommended_action"],
         source=result["source"],
+        similar_cases=similar_cases,
         status="pending",
         created_at=datetime.utcnow().isoformat(),
     )
     db.add(txn_row)
     db.commit()
     txn_id = txn_row.id
+
+    db.add(models.FraudCaseEmbedding(transaction_id=txn_id, embedding=embedding))
+    db.commit()
     db.close()
 
-    return {"id": txn_id, "fraud_probability": prob, "risk_level": risk, **result}
+    return {"id": txn_id, "fraud_probability": prob, "risk_level": risk, "similar_cases": similar_cases, **result}
 
 
 @app.post("/transactions")

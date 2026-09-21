@@ -1,5 +1,5 @@
 """ORM models for the Postgres-backed storage layer."""
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 
@@ -24,6 +24,7 @@ class Transaction(Base):
     explanation = Column(String)
     recommended_action = Column(String)
     source = Column(String)
+    similar_cases = Column(JSON)
     status = Column(String, default="pending")
     created_at = Column(String)
 

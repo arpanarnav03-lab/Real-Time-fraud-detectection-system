@@ -9,3 +9,4 @@ python-dotenv
 sqlalchemy
 psycopg[binary]
 pgvector
+sentence-transformers
