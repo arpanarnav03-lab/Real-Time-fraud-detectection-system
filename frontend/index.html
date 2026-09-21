@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fraud Detection Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+<div id="root"></div>
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect } = React;
+
+const API_BASE = "http://localhost:8000";
+
+const RISK_STYLES = {
+  high:   { dot: "bg-rose-500",   text: "text-rose-400",   bg: "bg-rose-500/10 border-rose-500/30" },
+  medium: { dot: "bg-amber-500",  text: "text-amber-400",  bg: "bg-amber-500/10 border-amber-500/30" },
+  low:    { dot: "bg-emerald-500",text: "text-emerald-400",bg: "bg-emerald-500/10 border-emerald-500/30" },
+};
+
+function StatCard({ label, value, accent }) {
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4">
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`text-2xl font-semibold mt-1 ${accent || "text-slate-100"}`}>{value}</div>
+    </div>
+  );
+}
+
+function TransactionRow({ txn, onExpand, expanded, onStatusChange }) {
+  const risk = RISK_STYLES[txn.risk_level] || RISK_STYLES.low;
+  return (
+    <>
+      <tr onClick={() => onExpand(txn.id)} className="border-b border-slate-800 cursor-pointer hover:bg-slate-900/60 transition">
+        <td className="py-3 px-4 text-slate-400 text-sm">#{txn.id}</td>
+        <td className="py-3 px-4">
+          <span className={`inline-flex items-center gap-2 text-sm font-medium ${risk.text}`}>
+            <span className={`w-2 h-2 rounded-full ${risk.dot}`}></span>
+            {txn.risk_level.toUpperCase()}
+          </span>
+        </td>
+        <td className="py-3 px-4 text-sm">{(txn.fraud_probability * 100).toFixed(1)}%</td>
+        <td className="py-3 px-4 text-sm">₹{Number(txn.loan_amount).toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+        <td className="py-3 px-4 text-sm text-slate-400">{txn.distance_from_home.toFixed(0)} km</td>
+        <td className="py-3 px-4">
+          <span className="text-xs px-2 py-1 rounded-full bg-slate-800 text-slate-300 capitalize">{txn.status}</span>
+        </td>
+        <td className="py-3 px-4 text-sm text-slate-500">{txn.recommended_action.replace("_", " ")}</td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-slate-800 bg-slate-900/40">
+          <td colSpan="7" className="px-4 py-4">
+            <div className={`rounded-lg border p-4 ${risk.bg}`}>
+              <div className="text-sm text-slate-200 mb-3">{txn.explanation}</div>
+              <div className="text-xs text-slate-500 mb-3">
+                Explanation source: {txn.source === "llm" ? "Claude (LLM)" : "rule-based fallback"}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onStatusChange(txn.id, "cleared"); }}
+                  className="px-3 py-1.5 text-xs rounded-md bg-emerald-600 hover:bg-emerald-500 transition"
+                >Clear</button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onStatusChange(txn.id, "flagged"); }}
+                  className="px-3 py-1.5 text-xs rounded-md bg-rose-600 hover:bg-rose-500 transition"
+                >Flag</button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function App() {
+  const [transactions, setTransactions] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const fetchTransactions = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/transactions`);
+      if (!res.ok) throw new Error("API error");
+      setTransactions(await res.json());
+      setError(null);
+    } catch (e) {
+      setError("Can't reach the backend. Make sure it's running on localhost:8000.");
+    }
+  };
+
+  useEffect(() => { fetchTransactions(); }, []);
+
+  const seedDemoData = async () => {
+    setLoading(true);
+    try {
+      await fetch(`${API_BASE}/seed-demo-data`, { method: "POST" });
+      await fetchTransactions();
+    } catch (e) { setError("Seed failed — is the backend running?"); }
+    setLoading(false);
+  };
+
+  const updateStatus = async (id, status) => {
+    await fetch(`${API_BASE}/transactions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    fetchTransactions();
+  };
+
+  const highRisk = transactions.filter(t => t.risk_level === "high").length;
+  const pending = transactions.filter(t => t.status === "pending").length;
+  const avgProb = transactions.length
+    ? (transactions.reduce((s, t) => s + t.fraud_probability, 0) / transactions.length * 100).toFixed(1)
+    : "0";
+
+  return (
+    <div className="max-w-6xl mx-auto px-6 py-10">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold">Real-Time Fraud Detection</h1>
+          <p className="text-slate-500 text-sm mt-1">Digital lending transaction monitor — ML scoring + LLM explanation</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={fetchTransactions} className="px-4 py-2 text-sm rounded-lg bg-slate-800 hover:bg-slate-700 transition">Refresh</button>
+          <button onClick={seedDemoData} disabled={loading} className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50">
+            {loading ? "Loading…" : "Load Demo Transactions"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm">{error}</div>
+      )}
+
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <StatCard label="Total Transactions" value={transactions.length} />
+        <StatCard label="High Risk" value={highRisk} accent="text-rose-400" />
+        <StatCard label="Pending Review" value={pending} accent="text-amber-400" />
+        <StatCard label="Avg Fraud Score" value={`${avgProb}%`} />
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+              <th className="py-3 px-4">ID</th>
+              <th className="py-3 px-4">Risk</th>
+              <th className="py-3 px-4">Score</th>
+              <th className="py-3 px-4">Amount</th>
+              <th className="py-3 px-4">Distance</th>
+              <th className="py-3 px-4">Status</th>
+              <th className="py-3 px-4">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map(txn => (
+              <TransactionRow
+                key={txn.id}
+                txn={txn}
+                expanded={expandedId === txn.id}
+                onExpand={(id) => setExpandedId(expandedId === id ? null : id)}
+                onStatusChange={updateStatus}
+              />
+            ))}
+          </tbody>
+        </table>
+        {transactions.length === 0 && !error && (
+          <div className="py-16 text-center text-slate-500 text-sm">
+            No transactions yet. Click "Load Demo Transactions" to seed the dashboard.
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-slate-600 mt-6">
+        Click a row to see the LLM explanation and take action. Prototype scope: SQLite storage, single-service
+        backend. Production target: Postgres+pgvector, AWS Bedrock, Render/Vercel deploy — see docs/ARCHITECTURE.md.
+      </p>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
