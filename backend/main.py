@@ -34,7 +34,16 @@ from sqlalchemy import text
 
 from auth import create_access_token, get_current_user, hash_password, verify_password
 from database import Base, SessionLocal, engine
+
+# DIAGNOSTIC (deploy hang investigation): this import triggers embeddings.py's
+# module-level SentenceTransformer load, which can download ~90MB from the HF
+# Hub with no bound if the connection stalls. Bracketed so deploy logs show
+# whether the process ever gets past it, and how long it took if it does.
+print(f"[STARTUP {datetime.utcnow().isoformat()}] main: importing embeddings module...", flush=True)
+_t0 = time.monotonic()
 from embeddings import embed_transaction
+print(f"[STARTUP {datetime.utcnow().isoformat()}] main: embeddings module imported (+{time.monotonic() - _t0:.1f}s)", flush=True)
+
 from llm_explain import explain_transaction
 import models
 
@@ -103,7 +112,15 @@ def init_db():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS similar_cases JSON"))
 
+# DIAGNOSTIC (deploy hang investigation): init_db() opens a real Postgres
+# connection (CREATE EXTENSION + table DDL). Neon's free tier can cold-start,
+# and the connection previously had no connect_timeout, so a slow/unreachable
+# DB could hang here indefinitely. Bracketed so deploy logs show whether the
+# process ever gets past it, and how long it took if it does.
+print(f"[STARTUP {datetime.utcnow().isoformat()}] main: calling init_db() (opens Postgres connection)...", flush=True)
+_t0 = time.monotonic()
 init_db()
+print(f"[STARTUP {datetime.utcnow().isoformat()}] main: init_db() done (+{time.monotonic() - _t0:.1f}s)", flush=True)
 
 
 class TransactionIn(BaseModel):

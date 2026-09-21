@@ -21,6 +21,6 @@ if not DATABASE_URL:
 # .env can keep the connection string exactly as copied from Neon.
 ENGINE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
-engine = create_engine(ENGINE_URL, pool_pre_ping=True)
+engine = create_engine(ENGINE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 10})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
