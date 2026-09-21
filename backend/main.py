@@ -2,7 +2,7 @@
 Fraud detection API. Single FastAPI service handling:
 - transaction scoring (XGBoost)
 - LLM explanation (with rule-based fallback)
-- persistence (SQLite)
+- persistence (Postgres via SQLAlchemy)
 - CRUD endpoints for the dashboard
 
 Hackathon-scope note: consolidated into one service for build speed.
@@ -11,7 +11,6 @@ layers per the full spec (see docs/ARCHITECTURE.md).
 """
 import hashlib
 import math
-import sqlite3
 import json
 import time
 from datetime import datetime
@@ -26,11 +25,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
+from database import Base, SessionLocal, engine
 from llm_explain import explain_transaction
+import models
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "fraud.db"
 MODEL_PATH = BASE_DIR / "fraud_model.joblib"
 
 app = FastAPI(title="Fraud Detection API")
@@ -68,36 +69,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return SessionLocal()
 
 
 def init_db():
-    conn = get_db()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            distance_from_home REAL,
-            distance_from_last_transaction REAL,
-            ratio_to_median_purchase REAL,
-            repeat_borrower INTEGER,
-            used_chip_or_biometric INTEGER,
-            used_pin_or_otp INTEGER,
-            is_online_channel INTEGER,
-            hour_of_day REAL,
-            loan_amount REAL,
-            fraud_probability REAL,
-            risk_level TEXT,
-            explanation TEXT,
-            recommended_action TEXT,
-            source TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    Base.metadata.create_all(engine)
 
 init_db()
 
@@ -156,26 +134,29 @@ def _score_and_store(row: dict) -> dict:
 
     result = explain_transaction(prob, risk, top_features)
 
-    conn = get_db()
-    cur = conn.execute(
-        """INSERT INTO transactions
-        (distance_from_home, distance_from_last_transaction, ratio_to_median_purchase,
-         repeat_borrower, used_chip_or_biometric, used_pin_or_otp, is_online_channel,
-         hour_of_day, loan_amount, fraud_probability, risk_level, explanation,
-         recommended_action, source, status, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            row["distance_from_home"], row["distance_from_last_transaction"],
-            row["ratio_to_median_purchase"], row["repeat_borrower"],
-            row["used_chip_or_biometric"], row["used_pin_or_otp"],
-            row["is_online_channel"], row["hour_of_day"], row["loan_amount"],
-            prob, risk, result["explanation"], result["recommended_action"],
-            result["source"], "pending", datetime.utcnow().isoformat(),
-        ),
+    db = get_db()
+    txn_row = models.Transaction(
+        distance_from_home=row["distance_from_home"],
+        distance_from_last_transaction=row["distance_from_last_transaction"],
+        ratio_to_median_purchase=row["ratio_to_median_purchase"],
+        repeat_borrower=row["repeat_borrower"],
+        used_chip_or_biometric=row["used_chip_or_biometric"],
+        used_pin_or_otp=row["used_pin_or_otp"],
+        is_online_channel=row["is_online_channel"],
+        hour_of_day=row["hour_of_day"],
+        loan_amount=row["loan_amount"],
+        fraud_probability=prob,
+        risk_level=risk,
+        explanation=result["explanation"],
+        recommended_action=result["recommended_action"],
+        source=result["source"],
+        status="pending",
+        created_at=datetime.utcnow().isoformat(),
     )
-    conn.commit()
-    txn_id = cur.lastrowid
-    conn.close()
+    db.add(txn_row)
+    db.commit()
+    txn_id = txn_row.id
+    db.close()
 
     return {"id": txn_id, "fraud_probability": prob, "risk_level": risk, **result}
 
@@ -189,20 +170,28 @@ def create_transaction(txn: TransactionIn):
 
 @app.get("/transactions")
 def list_transactions():
-    conn = get_db()
-    rows = conn.execute("SELECT * FROM transactions ORDER BY fraud_probability DESC, created_at DESC").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    db = get_db()
+    rows = (
+        db.query(models.Transaction)
+        .order_by(models.Transaction.fraud_probability.desc(), models.Transaction.created_at.desc())
+        .all()
+    )
+    columns = [c.name for c in models.Transaction.__table__.columns]
+    result = [{c: getattr(r, c) for c in columns} for r in rows]
+    db.close()
+    return result
 
 
 @app.patch("/transactions/{txn_id}")
 def update_status(txn_id: int, update: StatusUpdate):
-    conn = get_db()
-    cur = conn.execute("UPDATE transactions SET status = ? WHERE id = ?", (update.status, txn_id))
-    conn.commit()
-    conn.close()
-    if cur.rowcount == 0:
+    db = get_db()
+    row = db.get(models.Transaction, txn_id)
+    if row is None:
+        db.close()
         raise HTTPException(404, "Transaction not found")
+    row.status = update.status
+    db.commit()
+    db.close()
     return {"id": txn_id, "status": update.status}
 
 

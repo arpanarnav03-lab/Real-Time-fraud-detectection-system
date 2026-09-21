@@ -15,7 +15,8 @@
                       │  └───────────┬─────────────┘  │
                       │              ▼                │
                       │  ┌─────────────────────────┐  │
-                      │  │      SQLite storage      │  │
+                      │  │ PostgreSQL + pgvector   │  │
+                      │  │      (Neon, hosted)     │  │
                       │  └─────────────────────────┘  │
                       └──────────────────────────────┘
 ```
@@ -24,7 +25,7 @@
 - **Backend**: one FastAPI service (API + AI layer consolidated for build speed)
 - **ML model**: XGBoost, class-weighted for imbalance (fraud ~3% of transactions), ROC-AUC-optimized
 - **Explanation layer**: Claude API call for human-readable fraud reasoning; falls back to a deterministic rule-based explanation if the API key is unset or the call fails — the system never breaks scoring due to an LLM outage
-- **Storage**: SQLite (zero-setup, file-based)
+- **Storage**: PostgreSQL via SQLAlchemy, hosted on Neon, with the `pgvector` extension enabled for future semantic similarity search over historical fraud cases (`fraud_case_embeddings` table exists but isn't populated yet — no embedding model is wired up)
 - **Auth**: none (out of scope for the demo)
 
 ## Target production architecture (per problem statement spec)
@@ -47,7 +48,6 @@ Key differences from today's build, and why they're deferred:
 
 | Component | Prototype | Production target | Why deferred |
 |---|---|---|---|
-| Database | SQLite | PostgreSQL + pgvector | Setup overhead not worth it for a 4-hour build; pgvector would power semantic similarity search across historical fraud cases |
 | Deployment | Local only | Render (API) + Vercel (frontend) + managed Postgres | Avoids deploy-config risk right before a live demo |
 | AI layer | Direct Claude API call | AWS Bedrock, prompt templates, guardrails | Same underlying pattern, swap the client for a managed service |
 | Auth | None | JWT sessions, domain-restricted signup | Out of scope for a scoring demo |

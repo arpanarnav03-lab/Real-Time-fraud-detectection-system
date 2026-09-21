@@ -9,30 +9,50 @@ today vs. the target production architecture.
 
 ## Quickstart
 
-### 1. Backend
+### 1. Database (Neon Postgres)
+
+The backend stores transactions in Postgres via SQLAlchemy, hosted on
+[Neon](https://neon.tech) (has a free tier).
+
+1. Create a Neon project (or use an existing one).
+2. In the Neon dashboard, open **Connect** and copy the **pooled** connection
+   string. It looks like:
+   ```
+   postgresql://<user>:<password>@<endpoint-id>.<region>.aws.neon.tech/<dbname>?sslmode=require&channel_binding=require
+   ```
+3. Paste it into `DATABASE_URL` in your `.env` (see step 2 below) — keep the
+   `sslmode=require` and `channel_binding=require` query params, they're
+   required for Neon's pooled endpoint and are handled correctly by the
+   `psycopg` (v3) driver this project uses.
+
+No manual `pgvector` setup is needed — on startup the app runs
+`CREATE EXTENSION IF NOT EXISTS vector;` and creates any missing tables
+automatically.
+
+### 2. Backend
 
 ```bash
 cd backend
 python3 -m venv venv && source venv/bin/activate   # optional but recommended
 pip install -r requirements.txt
 
-# (optional) enable LLM explanations — without this, the system falls
-# back to rule-based explanations automatically
 cp ../.env.example .env
-# edit .env and add your ANTHROPIC_API_KEY
+# edit .env: set DATABASE_URL (required, see step 1 above), and optionally
+# ANTHROPIC_API_KEY to enable LLM explanations — without it, the system
+# falls back to rule-based explanations automatically
 
 # train the model (already included as fraud_model.joblib, but you can retrain)
 python3 ../data/generate_data.py   # regenerate synthetic dataset if needed
 python3 train_model.py             # trains and saves fraud_model.joblib
 
-# run the API
-export $(cat .env | xargs) 2>/dev/null  # loads ANTHROPIC_API_KEY if set
+# run the API (loads .env into the shell first)
+set -a && source .env && set +a
 uvicorn main:app --reload --port 8000
 ```
 
 API is now live at `http://localhost:8000`. Check `http://localhost:8000/health`.
 
-### 2. Frontend
+### 3. Frontend
 
 No build step needed — it's a single HTML file using React via CDN.
 
@@ -43,7 +63,7 @@ python3 -m http.server 3000
 
 Open `http://localhost:3000` in your browser.
 
-### 3. Try it
+### 4. Try it
 
 Click **"Load Demo Transactions"** on the dashboard to seed 25 scored
 transactions from the synthetic dataset. Click any row to see the fraud
@@ -66,7 +86,9 @@ explanation and clear/flag it.
 ```
 fraud-detection-hackathon/
 ├── backend/
-│   ├── main.py           # FastAPI app — endpoints, scoring, storage
+│   ├── main.py           # FastAPI app — endpoints, scoring
+│   ├── database.py       # SQLAlchemy engine/session (Postgres via Neon)
+│   ├── models.py         # ORM models: transactions, fraud_case_embeddings
 │   ├── train_model.py    # trains the XGBoost fraud model
 │   ├── llm_explain.py    # LLM explanation + rule-based fallback
 │   ├── fraud_model.joblib
@@ -99,6 +121,8 @@ See training output for ROC-AUC and classification report.
 
 ## Security notes
 
-- No secrets are hardcoded — `ANTHROPIC_API_KEY` is read from environment
-  variables only, via `.env` (gitignored).
+- No secrets are hardcoded — `ANTHROPIC_API_KEY` and `DATABASE_URL` are read
+  from environment variables only, via `.env` (gitignored).
 - Input validation via Pydantic models on all API endpoints.
+- The Postgres connection uses `sslmode=require` and `channel_binding=require`
+  as provided by Neon; don't strip these from `DATABASE_URL`.

@@ -6,3 +6,6 @@ pandas
 joblib
 anthropic
 python-dotenv
+sqlalchemy
+psycopg[binary]
+pgvector
