@@ -57,14 +57,17 @@ API is now live at `http://localhost:8000`. Check `http://localhost:8000/health`
 
 ### 3. Frontend
 
-No build step needed — it's a single HTML file using React via CDN.
+A Vite + React project. Tailwind is still loaded via the CDN `<script>` tag
+in `index.html` (no Tailwind build step) — only React/JSX go through Vite.
 
 ```bash
 cd frontend
-python3 -m http.server 3000
+npm install
+npm run dev
 ```
 
-Open `http://localhost:3000` in your browser.
+Open `http://localhost:3000` in your browser (the dev server is configured
+to use port 3000 to match the previous setup).
 
 ### 4. Tests
 
@@ -106,6 +109,7 @@ clear/flag it.
 
 ```
 fraud-detection-hackathon/
+├── render.yaml            # Render Blueprint — backend deployment config
 ├── backend/
 │   ├── main.py           # FastAPI app — endpoints, scoring
 │   ├── auth.py           # password hashing (bcrypt) + JWT issue/verify
@@ -117,7 +121,22 @@ fraud-detection-hackathon/
 │   ├── fraud_model.joblib
 │   └── requirements.txt
 ├── frontend/
-│   └── index.html        # single-file React dashboard
+│   ├── index.html         # Vite entry HTML — Tailwind CDN tag lives here
+│   ├── vite.config.js
+│   ├── package.json
+│   ├── vercel.json        # frontend deployment config (Vite preset)
+│   └── src/
+│       ├── main.jsx       # mounts <App /> into #root
+│       ├── App.jsx        # top-level auth gate (login/signup vs. dashboard)
+│       ├── AuthScreen.jsx
+│       ├── Dashboard.jsx
+│       ├── TransactionRow.jsx
+│       ├── StatCard.jsx
+│       ├── NewTransactionPanel.jsx
+│       ├── NumberField.jsx
+│       ├── ToggleField.jsx
+│       ├── constants.js   # API_BASE, RISK_STYLES, form presets
+│       └── utils.js       # shared error-message helpers
 ├── data/
 │   ├── generate_data.py  # synthetic fraud dataset generator
 │   └── transactions.csv
@@ -146,6 +165,67 @@ header, obtained from `/auth/login` or `/auth/signup`.
 Trained on a 20,000-row synthetic transaction dataset (3% fraud rate),
 XGBoost with `scale_pos_weight` for class imbalance, stratified 80/20 split.
 See training output for ROC-AUC and classification report.
+
+## Deployment
+
+Config files are in the repo and ready to go, but **nothing is deployed
+yet** — this section is a reference for when you are ready.
+
+### Environment variables
+
+Set these on whichever platform hosts the backend (e.g. Render). Never put
+real values in `.env.example` or any committed file.
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | Neon Postgres pooled connection string (`sslmode=require&channel_binding=require`) |
+| `JWT_SECRET` | Yes | Signs/verifies auth tokens. Generate with `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `ANTHROPIC_API_KEY` | No | Enables LLM explanations; without it, the rule-based fallback is used |
+
+### Backend → Render
+
+[render.yaml](render.yaml) is a Blueprint targeting the free plan:
+`rootDir: backend`, installs `requirements.txt`, runs
+`uvicorn main:app --host 0.0.0.0 --port $PORT`, and checks `/health`.
+
+1. In the Render dashboard: **New → Blueprint**, point it at this repo.
+2. Render reads `render.yaml` and prompts for the three env vars above
+   (they're marked `sync: false` in the file, so they're never read from —
+   or written to — the repo).
+3. First deploy will take a few minutes: it installs `xgboost`,
+   `sentence-transformers` (pulls in torch), and `psycopg[binary]`.
+
+**Free-tier caveats worth knowing before you rely on it for a demo:**
+- The service spins down after 15 minutes idle and cold-starts (tens of
+  seconds — it has to reload the XGBoost model and the sentence-transformers
+  embedding model) on the next request.
+- Free tier is memory-constrained (512 MB); XGBoost + torch loaded together
+  at startup are not tiny. If the service OOMs on boot, that's the first
+  thing to check — upgrading the plan is the fix, not a code change.
+
+### Frontend → Vercel
+
+The frontend is a Vite project with a build step (`npm run build` →
+`frontend/dist`). [frontend/vercel.json](frontend/vercel.json) declares
+`"framework": "vite"`, which Vite would also auto-detect on its own from
+`vite.config.js` + `package.json`.
+
+1. Import this repo in the Vercel dashboard, then set **Root Directory** to
+   `frontend` in the project's Build & Deployment settings — this is a
+   per-project dashboard setting for monorepos, not something a repo-root
+   config file can express. Vercel then runs `npm install && npm run build`
+   and serves `dist/` automatically; no other settings are needed.
+2. **Before deploying**, update `API_BASE` in `frontend/src/constants.js`
+   from `http://localhost:8000` to your deployed Render backend's URL.
+
+### After both are deployed
+
+- Tighten CORS: `backend/main.py` currently sets `allow_origins=["*"]`,
+  which is fine for local dev but should be narrowed to your deployed
+  frontend's exact origin (e.g. `https://your-app.vercel.app`) once you
+  know it.
+- Re-run the checklist above (`API_BASE`, CORS) any time the deployed
+  frontend or backend URL changes.
 
 ## Security notes
 

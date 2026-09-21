@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 580" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="820" height="580" fill="#ffffff" />
+
+  <text x="410" y="28" text-anchor="middle" font-size="16" font-weight="700" fill="#0f172a">
+    Real-Time Fraud Detection — Current Architecture
+  </text>
+
+  <!-- React Dashboard -->
+  <rect x="310" y="52" width="200" height="72" rx="10" fill="#f8fafc" stroke="#4f46e5" stroke-width="2" />
+  <text x="410" y="78" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">React Dashboard</text>
+  <text x="410" y="96" text-anchor="middle" font-size="11" fill="#64748b">Vite + Tailwind (CDN)</text>
+  <rect x="370" y="104" width="80" height="16" rx="8" fill="#4f46e5" />
+  <text x="410" y="116" text-anchor="middle" font-size="10" font-weight="600" fill="#ffffff">Vercel</text>
+
+  <!-- Arrow: React <-> FastAPI -->
+  <line x1="410" y1="124" x2="410" y2="182" stroke="#94a3b8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text x="424" y="157" font-size="11" fill="#475569">HTTPS + JWT</text>
+  <text x="424" y="170" font-size="11" fill="#475569">bearer token</text>
+
+  <!-- FastAPI Backend -->
+  <rect x="210" y="182" width="400" height="148" rx="10" fill="#f8fafc" stroke="#059669" stroke-width="2" />
+  <text x="410" y="208" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">FastAPI Backend</text>
+  <rect x="365" y="216" width="90" height="16" rx="8" fill="#059669" />
+  <text x="410" y="228" text-anchor="middle" font-size="10" font-weight="600" fill="#ffffff">Render</text>
+  <text x="234" y="252" font-size="12" fill="#334155">• JWT auth (bcrypt password hashing + PyJWT)</text>
+  <text x="234" y="272" font-size="12" fill="#334155">• XGBoost fraud scoring (in-process model)</text>
+  <text x="234" y="292" font-size="12" fill="#334155">• sentence-transformers embeddings (384-dim)</text>
+  <text x="234" y="312" font-size="12" fill="#334155">• Pydantic input validation on every endpoint</text>
+
+  <!-- Arrows: FastAPI -> Postgres, FastAPI -> Claude -->
+  <line x1="300" y1="330" x2="210" y2="404" stroke="#94a3b8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <line x1="520" y1="330" x2="610" y2="404" stroke="#94a3b8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text x="130" y="368" font-size="11" fill="#475569">SQLAlchemy ORM</text>
+  <text x="565" y="368" font-size="11" fill="#475569">explanation</text>
+  <text x="565" y="381" font-size="11" fill="#475569">request</text>
+
+  <!-- Postgres + pgvector -->
+  <rect x="40" y="404" width="340" height="126" rx="10" fill="#f8fafc" stroke="#d97706" stroke-width="2" />
+  <text x="210" y="430" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">PostgreSQL + pgvector</text>
+  <rect x="175" y="438" width="70" height="16" rx="8" fill="#d97706" />
+  <text x="210" y="450" text-anchor="middle" font-size="10" font-weight="600" fill="#ffffff">Neon</text>
+  <text x="64" y="474" font-size="12" fill="#334155">• users, transactions tables</text>
+  <text x="64" y="494" font-size="12" fill="#334155">• fraud_case_embeddings (vector(384))</text>
+  <text x="64" y="514" font-size="12" fill="#334155">• cosine similarity search for fraud patterns</text>
+
+  <!-- Claude API -->
+  <rect x="440" y="404" width="340" height="126" rx="10" fill="#f8fafc" stroke="#7c3aed" stroke-width="2" />
+  <text x="610" y="430" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">Claude API</text>
+  <rect x="565" y="438" width="90" height="16" rx="8" fill="#7c3aed" />
+  <text x="610" y="450" text-anchor="middle" font-size="10" font-weight="600" fill="#ffffff">Anthropic</text>
+  <text x="464" y="474" font-size="12" fill="#334155">• plain-English fraud explanation</text>
+  <text x="464" y="494" font-size="12" fill="#334155">• informed by similar-case history</text>
+  <text x="464" y="514" font-size="12" fill="#334155">• rule-based fallback if unset/unavailable</text>
+
+  <text x="410" y="560" text-anchor="middle" font-size="11" fill="#94a3b8">
+    Deployment config (render.yaml, vercel.json) is ready in the repo — not yet live.
+  </text>
+</svg>

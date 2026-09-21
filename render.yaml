@@ -1,0 +1,29 @@
+# Render Blueprint for the FastAPI backend.
+#
+# Deploy: in the Render dashboard, "New > Blueprint" and point it at this
+# repo — Render picks up this file automatically. The three secret env vars
+# below are marked `sync: false`, so Render will prompt for their values
+# during Blueprint creation instead of reading them from this file (they
+# must never be committed). See README.md's "Deployment" section for what
+# each one is and where to get it.
+services:
+  - type: web
+    name: fraud-detection-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # Pinned for reproducibility — this service loads XGBoost and
+      # sentence-transformers (torch) at startup, both of which are
+      # sensitive to Python-version/native-wheel compatibility.
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
