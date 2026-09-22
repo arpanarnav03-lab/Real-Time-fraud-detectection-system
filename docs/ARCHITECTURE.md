@@ -2,7 +2,7 @@
 
 ## What's built today
 
-![Architecture diagram: React dashboard on Vercel calls FastAPI on Render over HTTPS with a JWT bearer token; FastAPI does XGBoost scoring and sentence-transformers embeddings in-process, then reads/writes PostgreSQL+pgvector on Neon and calls the Groq API (Llama 3.3 70B) for explanations with a rule-based fallback.](architecture.svg)
+![Component diagram: a Borrower or Reviewer signs in through the Review Client (AuthScreen.jsx, App.jsx, Dashboard.jsx, TransactionRow.jsx), which authenticates against and reads/updates the API and Auth layer (FastAPI Service in main.py, JWT Authentication in auth.py). The Scoring Orchestrator in main.py creates an embedding vector and predicts risk via Detection Intelligence (embeddings.py, the XGBoost model, llm_explain.py's explanation engine with its rule-based fallback calling the Groq LLM), then builds records, finds similar cases, and stores results via the Persistence layer (models.py, database.py) backed by Neon Postgres, seeded from the demo transactions.csv dataset.](architecture.png)
 
 - **Frontend**: React + Vite (Tailwind still via CDN `<script>` tag, no Tailwind build step) — see `frontend/`
 - **Backend**: one FastAPI service (API + AI layer consolidated for build speed) — see `backend/`

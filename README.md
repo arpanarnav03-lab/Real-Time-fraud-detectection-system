@@ -7,6 +7,10 @@ explains *why*, and a review dashboard lets a human clear or flag the result.
 Built for [Synchrony Hackathon] — see `docs/ARCHITECTURE.md` for what's built
 today vs. the target production architecture.
 
+## Architecture
+
+![Component diagram: a Borrower or Reviewer signs in through the Review Client (AuthScreen.jsx, App.jsx, Dashboard.jsx, TransactionRow.jsx), which authenticates against and reads/updates the API and Auth layer (FastAPI Service in main.py, JWT Authentication in auth.py). The Scoring Orchestrator in main.py creates an embedding vector and predicts risk via Detection Intelligence (embeddings.py, the XGBoost model, llm_explain.py's explanation engine with its rule-based fallback calling the Groq LLM), then builds records, finds similar cases, and stores results via the Persistence layer (models.py, database.py) backed by Neon Postgres, seeded from the demo transactions.csv dataset.](docs/architecture.png)
+
 ## Quickstart
 
 ### 1. Database (Neon Postgres)
