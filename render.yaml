@@ -12,15 +12,31 @@ services:
     runtime: python
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    # The embedding model is downloaded here, at build time, rather than on
+    # first use at runtime. A cold runtime download (~90MB from the HF Hub)
+    # is what stalled an earlier deploy: it blocks before uvicorn can bind
+    # $PORT, and a stalled connection shows up as a silent hang rather than
+    # an error. Doing it in the build makes it visible and fails loudly.
+    # The `du` at the end confirms in the build log that the cache actually
+    # landed at HF_HOME — if it reports a missing/empty path, the runtime
+    # will re-download and HF_HOME below needs adjusting.
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2'); print('embedding model cached OK')" &&
+      du -sh "$HF_HOME"
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       # Pinned for reproducibility — this service loads XGBoost and
-      # sentence-transformers (torch) at startup, both of which are
-      # sensitive to Python-version/native-wheel compatibility.
+      # sentence-transformers (torch), both of which are sensitive to
+      # Python-version/native-wheel compatibility.
       - key: PYTHON_VERSION
         value: 3.11.9
+      # Keep the HF cache inside the project tree so the model downloaded
+      # during the build is still there at runtime. envVars apply to both
+      # the build and the running service, so these two always agree.
+      - key: HF_HOME
+        value: /opt/render/project/src/backend/.hf_cache
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET

@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Literal
 
 # xgboost's native lib must finish initializing its OpenMP runtime before
-# torch (pulled in indirectly by sentence-transformers below) initializes
-# its own — loading torch first causes a segfault from the two colliding.
+# torch initializes its own — loading torch first causes a segfault from the
+# two colliding. torch is now imported lazily (embeddings.py, on first use),
+# so importing xgboost up here keeps it safely ahead of torch either way.
 import xgboost  # noqa: F401
 
 import joblib
@@ -35,10 +36,9 @@ from sqlalchemy import text
 from auth import create_access_token, get_current_user, hash_password, verify_password
 from database import Base, SessionLocal, engine
 
-# DIAGNOSTIC (deploy hang investigation): this import triggers embeddings.py's
-# module-level SentenceTransformer load, which can download ~90MB from the HF
-# Hub with no bound if the connection stalls. Bracketed so deploy logs show
-# whether the process ever gets past it, and how long it took if it does.
+# DIAGNOSTIC (deploy hang investigation): embeddings.py now defers its torch
+# import and model load to first use, so this should be near-instant. If these
+# two lines are ever far apart in the deploy logs, that assumption has broken.
 print(f"[STARTUP {datetime.utcnow().isoformat()}] main: importing embeddings module...", flush=True)
 _t0 = time.monotonic()
 from embeddings import embed_transaction

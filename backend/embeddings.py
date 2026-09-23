@@ -14,12 +14,27 @@ from datetime import datetime
 os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "15")
 os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "15")
 
-from sentence_transformers import SentenceTransformer
+MODEL_NAME = "all-MiniLM-L6-v2"
 
-print(f"[STARTUP {datetime.utcnow().isoformat()}] embeddings: loading SentenceTransformer('all-MiniLM-L6-v2') (downloads ~90MB from HF Hub if not cached)...", flush=True)
-_t0 = time.monotonic()
-_model = SentenceTransformer("all-MiniLM-L6-v2")
-print(f"[STARTUP {datetime.utcnow().isoformat()}] embeddings: SentenceTransformer loaded (+{time.monotonic() - _t0:.1f}s)", flush=True)
+# Loaded on first use rather than at import. Importing sentence_transformers
+# pulls in torch (~215MB, ~10s) and constructing the model downloads ~90MB
+# from the HF Hub when the cache is cold — doing that at import time blocks
+# the process before uvicorn can bind $PORT, which is what stalled the Render
+# deploy. Deferring it lets the service come up and pass its health check
+# immediately; the first transaction scored pays the load cost instead.
+_model = None
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        print(f"[{datetime.utcnow().isoformat()}] embeddings: first use — loading SentenceTransformer('{MODEL_NAME}') (downloads ~90MB if not cached)...", flush=True)
+        _t0 = time.monotonic()
+        from sentence_transformers import SentenceTransformer
+
+        _model = SentenceTransformer(MODEL_NAME)
+        print(f"[{datetime.utcnow().isoformat()}] embeddings: SentenceTransformer ready (+{time.monotonic() - _t0:.1f}s)", flush=True)
+    return _model
 
 
 def transaction_to_text(row: dict) -> str:
@@ -37,5 +52,5 @@ def transaction_to_text(row: dict) -> str:
 
 
 def embed_transaction(row: dict) -> list[float]:
-    vector = _model.encode(transaction_to_text(row), normalize_embeddings=True)
+    vector = _get_model().encode(transaction_to_text(row), normalize_embeddings=True)
     return vector.tolist()
