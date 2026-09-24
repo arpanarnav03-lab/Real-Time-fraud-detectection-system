@@ -1,4 +1,4 @@
-export const API_BASE = "https://fraud-detection-api-01v3.onrender.com";
+export const API_BASE = "http://localhost:8000";
 
 export const RISK_STYLES = {
   high:   { dot: "bg-rose-500",   text: "text-rose-400",   bg: "bg-rose-500/10 border-rose-500/30" },
