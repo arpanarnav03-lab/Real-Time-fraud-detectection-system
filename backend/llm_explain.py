@@ -10,7 +10,11 @@ import os
 import json
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL = "llama-3.3-70b-versatile"
+# llama-3.3-70b-versatile was removed from Groq's model catalog (calls to it
+# 404'd with "model_not_found", silently falling back to the rule-based
+# path). gpt-oss-120b is the closest available replacement in size/tier and
+# is on Groq's free dev tier — no billing required.
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 _client = None
 if GROQ_API_KEY:
